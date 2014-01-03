@@ -5,10 +5,10 @@ import sys
 import os
 
 def usage():
-	if len(sys.argv)!=2 and len(sys.argv)!=6:
-		print "Usage:\n 	python record_process.py 'record_file' [-cChannelNum] [-rSampleRate] [-wSampleWidth] [-eLittleEndian] [-lLogFile]"
-		print "Default Value:\n     -c1 -r8000 -w2 -e1 -llog.txt"
-		print "Attention\n       Only PCM records need parameters above"
+	#if len(sys.argv)!=2 and len(sys.argv)!=6:
+	print "Usage:\n 	python record_process.py 'record_file' [-cChannelNum] [-rSampleRate] [-wSampleWidth] [-eLittleEndian] [-lLogFile]"
+	print "Default Value:\n     -c1 -r8000 -w2 -e1 -llog.txt"
+	print "Attention\n       Only PCM records need parameters above"
 		
 def record_process(recordFile,logFile,channelNum,sampleRate,sampleWidth,littleEndian):
 	speech_process.speech_process(recordFile,nchannels=channelNum,sampleRate=sampleRate,sampleWidth=sampleWidth,littleEndian=littleEndian,logFile=logFile)
