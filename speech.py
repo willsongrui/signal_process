@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 import math
 import wave
 import numpy as np
@@ -11,6 +12,7 @@ import yulewalker
 from audiolazy import *
 import pylab as pl
 from scikits.talkbox import lpc as talkboxLpc
+from mood_svm import classify
 class Speech:
 	def __init__(self,source,nchannels,sampleRate,sampleWidth,littleEndian):
 		self.error = []
@@ -84,8 +86,12 @@ class Speech:
 			self.energyBelow250.append(below250/totalEnergy)
 
 	# get speechSegment,volume,volumeAbs,and shortTimeEnergy 
-	def speechPercentage(self):
-		pass
+	def getSpeechPercentage(self):
+		self.speechPercentage = 0
+		speechFrame = 0
+		for i in self.speechSegment:
+			speechFrame = speechFrame + i[1] - i[0]
+		self.speechPercentage = speechFrame*1.0/self.frameNum 
 	def getSpeechSegment(self,frameSize,overLap,minLen,minSilence):
 		print "getSpeechSegment"
 		zcrThread = 0
@@ -183,8 +189,11 @@ class Speech:
 		self.ezr = []
 		self.ezm = []
 		for i in range(len(self.shortTimeEnergy)):
-			ezr = self.shortTimeEnergy[i]/self.zcr[i]
-			ezm = self.shortTimeEnergy[i]*self.zcr[i]
+			if self.zcr[i]!=0:
+				ezr = self.shortTimeEnergy[i]/self.zcr[i]/10000000
+			else:
+				ezr = self.shortTimeEnergy[i]/10000000
+			ezm = self.shortTimeEnergy[i]*self.zcr[i]/10000000
 			self.ezr.append(ezr)
 			self.ezm.append(ezm)
 
@@ -219,7 +228,7 @@ class Speech:
 		tHoldHigh = min(max(self.absVolume)/6,6*self.maxData)
 		self.tHoldHigh = tHoldHigh
 		self.tHoldLow = tHoldLow
-		print self.tHoldHigh
+		#print self.tHoldHigh
 		self.segmentTime = []
 		# status is used to show the status of the endPointDetection machine
 		# 0=>silence		1=>mayBegin		2=>speechSegment 	3=>end 
@@ -230,7 +239,7 @@ class Speech:
 		minSilence = int(minSilence*self.sampleRate/self.frameSize)  #If we meet minSilence consecutive silence than the speech is probably end
 		minLen = int(minLen*self.sampleRate/self.frameSize) 	#A speech should at least longer than minLen frames
 		segmentEnd = 0
-		print  "minSilence",minSilence,"minLen",minLen
+		#print  "minSilence",minSilence,"minLen",minLen
 		for i in range(self.frameNum):
 			if (status == 0) or (status == 1):
 				if self.absVolume[i]>tHoldHigh:
@@ -238,7 +247,7 @@ class Speech:
 					status = 2
 					silence = 0
 					count = count + 1
-					print "beg"
+					#print "beg"
 				elif self.absVolume[i]>tHoldLow:
 					status = 1
 					count = count + 1
@@ -257,13 +266,13 @@ class Speech:
 						status = 0
 						silence = 0
 						count = 0
-						print "endOfNoise"
+						#print "endOfNoise"
 					else:
 						status = 0
 						segmentEnd = i - minSilence
 						self.speechSegment.append((segmentBeg,segmentEnd))
 						self.segmentTime.append((segmentBeg*self.totalLength/self.frameNum,segmentEnd*self.totalLength/self.frameNum))
-						print "end success"
+						#print "end success"
 						#print "beg speech %d %f"%(segmentBeg,segmentBeg*self.totalLength/self.frameNum)
 						#print "end speech %d %f"%(segmentEnd,segmentEnd*self.totalLength/self.frameNum)
 						status = 0
@@ -284,8 +293,8 @@ class Speech:
 		#For example, self.pitchSeg[m][n] is the (n+1)th "ZHUOYIN" pitch seg in m+1 speechSeg 
 		self.pitchSeg = []
 		#self.tmp = []
-		minLen = 3 # 最小浊音长度
-		minSilence = 2 #浊音之间最小间隔
+		minLen = 5 # 最小浊音长度
+		minSilence = 5 #浊音之间最小间隔
 		if len(self.speechSegment)==0 or self.isBlank==True:
 			return
 		
@@ -307,16 +316,17 @@ class Speech:
 				pitchMax = np.argmax(pitch)
 				if pitchMax==0:
 					self.error.append(('pitch error',pitch,utils.ACF(frame)))
-				tmp.append((self.sampleRate/pitchMax,pitch[pitchMax]))
+				tmp.append((self.sampleRate/pitchMax,pitch[pitchMax]/1000000))
 				curFramePitch.append(self.sampleRate/pitchMax)
 			self.tmp.append(tmp)	
 			pitchHigh = np.max(tmp,0)[1]/12.0
 			pitchLow = np.max(tmp,0)[1]/24.0
-			pitchHigh = 0
-			pitchLow = 0
-			ezrLevel = max(self.ezr[beg:end])/2
+			#pitchHigh = 0
+			#pitchLow = 0
+			ezrLevel = max(self.ezr[beg:end])*0.2
 			volumeHigh = np.max(self.absVolume[beg:end])/4
 			volumeLow = volumeHigh/2
+			
 			#zcrHigh = np.max(self.zcr[beg:end])/2
 			#zcrLow = zcrHigh/1
 			zcrHigh = 1000
@@ -326,8 +336,31 @@ class Speech:
 			trange = []
 			count = 0
 			silence = 0
-			print 'zcrHigh',zcrHigh,'volumeHigh',volumeHigh,'pitchHigh',pitchHigh
+			self.pitch.append(curFramePitch)
+			print 'ezrLevel',ezrLevel,'volumeHigh',volumeHigh,'pitchHigh',pitchHigh,'minSilence',minSilence,'minLen',minLen
+			for t in range(len(tmp)):
+				if tmp[t][1]>pitchHigh and self.ezr[t+beg]>ezrLevel:
+					print 'beg ',t,'status',status
+					if status == 0:
+						start = t 
+						duration = 0
+						status = 1
+					duration = duration+1
+				else:
+					if status == 1:
+						trange.append((start,t))
+						status = 0
+						duration = 0
+			if status == 1:
+				trange.append((start,len(tmp)))
+			self.pitchSeg.append(trange)
+			self.tmp.append(tmp)
 
+
+
+
+			'''
+			status = 0
 			for t in range(len(tmp)):
 				if status==0 or status==1:
 					if tmp[t][1]>pitchHigh and self.ezr[t+beg]>ezrLevel and self.absVolume[t+beg]>volumeHigh and self.zcr[t+beg]<zcrLow:
@@ -362,17 +395,19 @@ class Speech:
 							count = 0
 							silence = 0
 			if status == 2:
-				trange.append((pitchBeg,len(tmp)-1))
+				if len(tmp)-pitchBeg > minLen:
+					trange.append((pitchBeg,len(tmp)-1))
+
 			self.pitchSeg.append(trange)
 
 			#pitchSeg = []
 			#for t in trange:
 			#	pitchSeg.append(tmp[t[0]:t[1]])
 			#self.pitchSeg.append(pitchSeg)
-			self.pitch.append(curFramePitch)
+			
 			
 			#self.tmp.append(tmp)
-			
+			'''
 	
 	def getFramePitchAdvanced(self):
 		pitchLow = 10
@@ -573,6 +608,7 @@ class Speech:
 		if len(self.speechSegment)==0 or self.isBlank==True:
 			return
 		self.num = len(self.speechSegment)
+		
 		#for i in range(self.num):
 		#	pitchAverage = np.average(self.pitchSeg)
 		print "We have %d speech segments in all"%self.num
@@ -601,6 +637,8 @@ class Speech:
 				#pitchSeg 是记录在pitch中满足50～450之间的pitch的起始点的 可以用来计算pitch的变化规律
 				pitchSum = pitchSum + sum(self.pitch[i][self.pitchSeg[i][k][0]:self.pitchSeg[i][k][1]])
 				pitchNum = pitchNum + self.pitchSeg[i][k][1] - self.pitchSeg[i][k][0]
+				if self.pitchSeg[i][k][0]==self.pitchSeg[i][k][1]:
+					print self.fileName
 				pitchMax = max(max(self.pitch[i][self.pitchSeg[i][k][0]:self.pitchSeg[i][k][1]]),pitchMax)
 				pitchMin = min(min(self.pitch[i][self.pitchSeg[i][k][0]:self.pitchSeg[i][k][1]]),pitchMin)
 				if k!=len(self.pitchSeg[i])-1:
@@ -640,26 +678,11 @@ class Speech:
 			for k in range(beg,end-1):
 				volumeDiff = volumeDiff + abs(self.absVolume[k+1]-self.absVolume[k])
 			self.volumeDiff.append(volumeDiff*1.0/(end-beg))
-	def dataProcessByWords(self):
-		#self.maxData = 1
-		#语速 基音频率 基音范围 振幅 振幅标准差 第一共振峰 第一共振峰范围
-		#self.speed self.pitchAverage self.pitchRange, self.volumeAverage self.volumeStd self.fmtAverage  self.fmtRange
-		self.pitchSegment = []
-		self.f1Segment = []
-		self.volumeSegment = []
-		self.fmtAverage = []
-		for index,words in enumerate(self.segWord):
-			f1Words = []
-			f1Word = []
-			for word in words:
-				f1Word = f1Word + self.f1[word[0]:word[1]]
-				f1Words.append(self.f1[word[0]:word[1]])
-			print f1Word
-			self.fmtAverage.append(np.average(f1Word))
+		self.features = []
+		for i in range(self.num):
+			features = [self.pitchMax[i],self.pitchAveragePerSeg[i],self.pitchRange[i],self.pitchMin[i],self.pitchDiff[i],self.volumeAverage[i],self.volumeStd[i],self.volumeMax[i],self.volumeDiff[i],self.below250[i]]
+			self.features.append(features)
 		
-	
-
-
 	def getStat(self):
 		print "getStat"
 		if len(self.speechSegment)==0 or self.isBlank==True:
@@ -696,6 +719,39 @@ class Speech:
 		self.segNum = len(self.speechSegment)
 		self.timeLen = self.nframes/self.sampleRate/self.nchannels
 		print "total words:",self.totalWord
+	def predict(self,scale_model,model_file,label_file):
+		self.category = -1
+		predict_data = 'predict_data'
+		#全静音 单交互正常挂机 单交互异常挂机 多交互正常挂机 多交互异常挂机
+		if self.isBlank==True:
+			self.category = '全静音'
+		else:
+			self.writeToFile(predict_data,'0')
+			self.labels = classify(scale_model,model_file,predict_data)
+			cmd = 'rm %s'%predict_data
+			os.system(cmd)
+		fs = open(label_file,'aw')
+		if len(self.labels)==1:
+			if self.labels[0]==-1:
+				self.category = '单交互正常挂机'
+			else:
+				self.category = '单交互异常挂机'
+		else:
+			for label in self.labels:
+				if label == 1:
+					self.category = '多交互异常挂机'
+					break
+			if self.category == -1:
+				self.category = '多交互异常挂机'
+		self.label = np.average(self.labels)
+		
+		fs.write('File:		%s\nCategory:		%s\nLabel:		%s\n'%(self.fileName,self.category,self.labels))
+
+
+				
+				
+
+
 
 	def dump(self,log_file):
 		fs = open(log_file,'aw')
@@ -716,6 +772,7 @@ class Speech:
 			
 		fs.write('%-20s%-15s%-15.2f%-15.2f%-15.2f\n'%("","Variance",self.speedVariance,self.pitchVariance,self.volumeVariance))
 		fs.close()
+	
 	#用于机器学习
 	def writeToFile(self,dataFile,label='0'):
 	#基音频率 基音范围 振幅 振幅标准差 第一共振峰 第一共振峰范围

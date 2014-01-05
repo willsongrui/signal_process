@@ -22,17 +22,33 @@ def plotPitch(m):
             pl.plot([p[0]+m.speechSegment[index][0],p[0]+m.speechSegment[index][0]],[0,500],color='red')
             pl.plot([p[1]+m.speechSegment[index][0],p[1]+m.speechSegment[index][0]],[0,500],color='green')
     pl.subplot(512)
+    for index,s in enumerate(m.pitchSeg):
+        for p in s:
+            pl.plot([p[0]+m.speechSegment[index][0],p[0]+m.speechSegment[index][0]],[0,max(pitchValue)],color='red')
+            pl.plot([p[1]+m.speechSegment[index][0],p[1]+m.speechSegment[index][0]],[0,max(pitchValue)],color='green')
     pl.ylabel('value')
     pl.plot(pitchValue)
     pl.subplot(513)
+    for index,s in enumerate(m.pitchSeg):
+        for p in s:
+            pl.plot([p[0]+m.speechSegment[index][0],p[0]+m.speechSegment[index][0]],[0,max(m.zcr)],color='red')
+            pl.plot([p[1]+m.speechSegment[index][0],p[1]+m.speechSegment[index][0]],[0,max(m.zcr)],color='green')
     pl.ylabel('zcr')
     pl.plot(m.zcr)
     pl.subplot(514)
+    for index,s in enumerate(m.pitchSeg):
+        for p in s:
+            pl.plot([p[0]+m.speechSegment[index][0],p[0]+m.speechSegment[index][0]],[0,1],color='red')
+            pl.plot([p[1]+m.speechSegment[index][0],p[1]+m.speechSegment[index][0]],[0,1],color='green')
+    pl.ylabel('volume')
+    pl.plot(m.absVolume/max(m.absVolume))
+    pl.subplot(515)
+    for index,s in enumerate(m.pitchSeg):
+        for p in s:
+            pl.plot([p[0]+m.speechSegment[index][0],p[0]+m.speechSegment[index][0]],[0,max(m.ezr)],color='red')
+            pl.plot([p[1]+m.speechSegment[index][0],p[1]+m.speechSegment[index][0]],[0,max(m.ezr)],color='green')
     pl.ylabel('ezr')
     pl.plot(m.ezr)
-    pl.subplot(515)
-    pl.ylabel('ezm')
-    pl.plot(m.ezm)
     pl.show()
 
 def plot(m):
