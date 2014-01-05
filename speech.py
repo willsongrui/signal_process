@@ -92,6 +92,7 @@ class Speech:
 		for i in self.speechSegment:
 			speechFrame = speechFrame + i[1] - i[0]
 		self.speechPercentage = speechFrame*1.0/self.frameNum 
+		self.speechLength = self.speechPercentage*self.totalLength
 	def getSpeechSegment(self,frameSize,overLap,minLen,minSilence):
 		print "getSpeechSegment"
 		zcrThread = 0
@@ -612,6 +613,7 @@ class Speech:
 		#for i in range(self.num):
 		#	pitchAverage = np.average(self.pitchSeg)
 		print "We have %d speech segments in all"%self.num
+		self.pitchAverage = 0
 		self.pitchAveragePerSeg = []
 		self.pitchRange = []
 		self.volumeAverage = []
@@ -625,6 +627,7 @@ class Speech:
 		self.volumeDiff = []
 		self.pitchDiff = []
 		self.below250 = []
+		self.pitchNum = 0
 		#self.fmtRange = []
 		for i in range(self.num):
 			pitchSum = 0
@@ -637,6 +640,7 @@ class Speech:
 				#pitchSeg 是记录在pitch中满足50～450之间的pitch的起始点的 可以用来计算pitch的变化规律
 				pitchSum = pitchSum + sum(self.pitch[i][self.pitchSeg[i][k][0]:self.pitchSeg[i][k][1]])
 				pitchNum = pitchNum + self.pitchSeg[i][k][1] - self.pitchSeg[i][k][0]
+				  
 				if self.pitchSeg[i][k][0]==self.pitchSeg[i][k][1]:
 					print self.fileName
 				pitchMax = max(max(self.pitch[i][self.pitchSeg[i][k][0]:self.pitchSeg[i][k][1]]),pitchMax)
@@ -654,6 +658,8 @@ class Speech:
 				self.pitchMin.append(0)
 				self.pitchDiff.append(0)
 				continue
+			self.pitchAverage = self.pitchAverage + pitchSum
+			self.pitchNum = self.pitchNum + pitchNum
 			self.pitchAveragePerSeg.append(pitchSum*1.0/pitchNum)
 			pitchDiff = pitchDiff*1.0/pitchNum
 			self.pitchDiff.append(pitchDiff)
@@ -661,6 +667,8 @@ class Speech:
 			self.pitchMax.append(pitchMax)
 			self.pitchMin.append(pitchMin)
 
+		if self.pitchNum!=0:
+			self.pitchAverage = self.pitchAverage/self.pitchNum
 		for i in range(self.num):
 			beg = self.speechSegment[i][0]
 			end = self.speechSegment[i][1]
@@ -683,6 +691,112 @@ class Speech:
 			features = [self.pitchMax[i],self.pitchAveragePerSeg[i],self.pitchRange[i],self.pitchMin[i],self.pitchDiff[i],self.volumeAverage[i],self.volumeStd[i],self.volumeMax[i],self.volumeDiff[i],self.below250[i]]
 			self.features.append(features)
 		
+	
+	def predict(self,scale_model,model_file,label_file):
+		self.gender = 'Unknown'
+		self.category = -1
+		predict_data = 'predict_data'
+		#全静音 单交互正常挂机 单交互异常挂机 多交互正常挂机 多交互异常挂机
+		if self.isBlank==True:
+			self.category = '全静音'
+		else:
+			if self.pitchAverage in range(100,200):
+				self.gender = '男'
+			elif self.pitchAverage > 200:
+				self.gender = '女'
+			self.writeToFile(predict_data,'0')
+			self.labels = classify(scale_model,model_file,predict_data)
+			cmd = 'rm %s'%predict_data
+			os.system(cmd)
+		fs = open(label_file,'aw')
+		if len(self.labels)==1:
+			if self.labels[0]==-1:
+				self.category = '单交互正常挂机'
+			else:
+				self.category = '单交互异常挂机'
+		else:
+			for label in self.labels:
+				if label == 1:
+					self.category = '多交互异常挂机'
+					break
+			if self.category == -1:
+				self.category = '多交互异常挂机'
+		self.label = np.average(self.labels)
+		
+		fs.write('File:		%s\nCategory:		%s\nLabel:		%s\n'%(self.fileName,self.category,self.labels))
+		#fs.write('%-20s%-20s%-20s%-20s%-20s%-20s\n'%('总时长','通话时长','通话段数','通话人音量','通话人性别','通话人语调'))
+		fs.write('总时长        通话时长        通话段数        通话人音量        通话人性别        通话人语调\n')
+		fs.write('%-15.2f%-15.2f%-15f%-18.2f%-16s%-20.2f\n'%(self.totalLength,self.speechLength,self.num,np.average(self.volumeAverage),self.gender,self.pitchAverage))
+		fs.close()
+
+
+				
+				
+
+
+
+	
+	
+	#用于机器学习
+	def writeToFile(self,dataFile,label='0'):
+	#基音频率 基音范围 振幅 振幅标准差 第一共振峰 第一共振峰范围
+	#pitchAverage pitchRange pitchMax pitchMin pitchDiff volumeMax volumeAverage volumeStd volumeDiff below250 
+		fs = open(dataFile,'aw')
+		cnt = 1
+		#fs.write(self.fileName+'\n')
+		if self.isBlank==True:
+			fs.write('%s %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f\n'%('0',1,0,2,0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0))
+		else:
+			for i in range(self.num):
+				#fs.write('Wav File Name:%s\n'%(self.fileName))
+		#		fs.write('Segment Num %d:\n'%(cnt))
+				cnt = cnt + 1
+				fs.write('%s %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f\n'%(label,1,self.pitchMax[i],2,self.pitchAveragePerSeg[i],3,self.pitchRange[i],4,self.pitchMin[i],5,self.pitchDiff[i],6,self.volumeAverage[i],7,self.volumeStd[i],8,self.volumeMax[i],9,self.volumeDiff[i],10,self.below250[i]))
+		
+		fs.close()
+'''
+	def pre_getWordsPerSeg(self, a=2, T=3):
+		self.transitionTag = []
+		for seg in self.speechSegment:
+			segBeg = seg[0]
+			segEnd = seg[1]
+			TshortTimeEnergyBefore = sum(self.speechSegment[segBeg:segBeg+3])
+			TshortTimeEnergyAfter = sum(self.speechSegment[segBeg+2:segBeg+5])
+			for k in xrange(segBeg+2,segEnd-4):
+				curShortEnergy = self.shortTimeEnergy[k]
+				curZcr = self.zcr[k]
+				flag = False
+				if curShortEnergy>a*self.shortTimeEnergy[k+1] or curShortEnergy*a<self.shortTimeEnergy[k+1]:
+					flag = True
+				elif curZcr>a*self.zcr[k+1] or curZcr*a<self.zcr[k+1]:
+					flag = True
+				elif TshortTimeEnergyBefore*a < TshortTimeEnergyAfter or TshortTimeEnergyAfter*a < TshortTimeEnergyBefore:
+					flag = True
+				if flag == True:
+					self.transitionTag.append(k)
+				TshortTimeEnergyBefore = TshortTimeEnergyBefore - self.shortTimeEnergy[k-2] + self.shortTimeEnergy[k+1]
+				TshortTimeEnergyAfter = TshortTimeEnergyAfter - self.shortTimeEnergy[k] + self.shortTimeEnergy[k+3]
+
+	def dump(self,log_file):
+		fs = open(log_file,'aw')
+		fileName = self.fileName.split('/')[-1]
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			fs.write('%-20s%-15s\n'%(fileName,'全静音'))
+			fs.close()
+			return
+		fs.write('%-20s%-15d%-15.2f%-15.2f%-15.2f%-15d%-15f\n'%(fileName,self.segNum,self.averageSpeed,self.averagePitch,self.averageVolume,self.totalWord,self.speechTime))
+		#totalStat = ""
+		#totalStat = str(self.fileName)+"  "+str(self.totalWord)+"  "+str(self.averageVolume)+"  "+str(self.averagePitch)+"\n"
+		#fs.write(totalStat)
+		
+		segNum = 0
+		for stat in self.stat:
+			segNum = segNum + 1
+			fs.write('%-20s%-15d%-15.2f%-15.2f%-15.2f%-15d%-15.2f\n'%("",segNum,stat['speed'],stat['pitch'],stat['volume'],stat['words'],stat['time']))
+			
+		fs.write('%-20s%-15s%-15.2f%-15.2f%-15.2f\n'%("","Variance",self.speedVariance,self.pitchVariance,self.volumeVariance))
+		fs.close()
+
 	def getStat(self):
 		print "getStat"
 		if len(self.speechSegment)==0 or self.isBlank==True:
@@ -719,100 +833,5 @@ class Speech:
 		self.segNum = len(self.speechSegment)
 		self.timeLen = self.nframes/self.sampleRate/self.nchannels
 		print "total words:",self.totalWord
-	def predict(self,scale_model,model_file,label_file):
-		self.category = -1
-		predict_data = 'predict_data'
-		#全静音 单交互正常挂机 单交互异常挂机 多交互正常挂机 多交互异常挂机
-		if self.isBlank==True:
-			self.category = '全静音'
-		else:
-			self.writeToFile(predict_data,'0')
-			self.labels = classify(scale_model,model_file,predict_data)
-			cmd = 'rm %s'%predict_data
-			os.system(cmd)
-		fs = open(label_file,'aw')
-		if len(self.labels)==1:
-			if self.labels[0]==-1:
-				self.category = '单交互正常挂机'
-			else:
-				self.category = '单交互异常挂机'
-		else:
-			for label in self.labels:
-				if label == 1:
-					self.category = '多交互异常挂机'
-					break
-			if self.category == -1:
-				self.category = '多交互异常挂机'
-		self.label = np.average(self.labels)
-		
-		fs.write('File:		%s\nCategory:		%s\nLabel:		%s\n'%(self.fileName,self.category,self.labels))
 
-
-				
-				
-
-
-
-	def dump(self,log_file):
-		fs = open(log_file,'aw')
-		fileName = self.fileName.split('/')[-1]
-		if len(self.speechSegment)==0 or self.isBlank==True:
-			fs.write('%-20s%-15s\n'%(fileName,'全静音'))
-			fs.close()
-			return
-		fs.write('%-20s%-15d%-15.2f%-15.2f%-15.2f%-15d%-15f\n'%(fileName,self.segNum,self.averageSpeed,self.averagePitch,self.averageVolume,self.totalWord,self.speechTime))
-		#totalStat = ""
-		#totalStat = str(self.fileName)+"  "+str(self.totalWord)+"  "+str(self.averageVolume)+"  "+str(self.averagePitch)+"\n"
-		#fs.write(totalStat)
-		
-		segNum = 0
-		for stat in self.stat:
-			segNum = segNum + 1
-			fs.write('%-20s%-15d%-15.2f%-15.2f%-15.2f%-15d%-15.2f\n'%("",segNum,stat['speed'],stat['pitch'],stat['volume'],stat['words'],stat['time']))
-			
-		fs.write('%-20s%-15s%-15.2f%-15.2f%-15.2f\n'%("","Variance",self.speedVariance,self.pitchVariance,self.volumeVariance))
-		fs.close()
-	
-	#用于机器学习
-	def writeToFile(self,dataFile,label='0'):
-	#基音频率 基音范围 振幅 振幅标准差 第一共振峰 第一共振峰范围
-	#pitchAverage pitchRange pitchMax pitchMin pitchDiff volumeMax volumeAverage volumeStd volumeDiff below250 
-		fs = open(dataFile,'aw')
-		cnt = 1
-		#fs.write(self.fileName+'\n')
-		if self.isBlank==True:
-			fs.write('%s %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f\n'%('0',1,0,2,0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0))
-		else:
-			for i in range(self.num):
-				#fs.write('Wav File Name:%s\n'%(self.fileName))
-		#		fs.write('Segment Num %d:\n'%(cnt))
-				cnt = cnt + 1
-				fs.write('%s %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f\n'%(label,1,self.pitchMax[i],2,self.pitchAveragePerSeg[i],3,self.pitchRange[i],4,self.pitchMin[i],5,self.pitchDiff[i],6,self.volumeAverage[i],7,self.volumeStd[i],8,self.volumeMax[i],9,self.volumeDiff[i],10,self.below250[i]))
-		
-		fs.close()
-
-	def pre_getWordsPerSeg(self, a=2, T=3):
-		self.transitionTag = []
-		for seg in self.speechSegment:
-			segBeg = seg[0]
-			segEnd = seg[1]
-			TshortTimeEnergyBefore = sum(self.speechSegment[segBeg:segBeg+3])
-			TshortTimeEnergyAfter = sum(self.speechSegment[segBeg+2:segBeg+5])
-			for k in xrange(segBeg+2,segEnd-4):
-				curShortEnergy = self.shortTimeEnergy[k]
-				curZcr = self.zcr[k]
-				flag = False
-				if curShortEnergy>a*self.shortTimeEnergy[k+1] or curShortEnergy*a<self.shortTimeEnergy[k+1]:
-					flag = True
-				elif curZcr>a*self.zcr[k+1] or curZcr*a<self.zcr[k+1]:
-					flag = True
-				elif TshortTimeEnergyBefore*a < TshortTimeEnergyAfter or TshortTimeEnergyAfter*a < TshortTimeEnergyBefore:
-					flag = True
-				if flag == True:
-					self.transitionTag.append(k)
-				TshortTimeEnergyBefore = TshortTimeEnergyBefore - self.shortTimeEnergy[k-2] + self.shortTimeEnergy[k+1]
-				TshortTimeEnergyAfter = TshortTimeEnergyAfter - self.shortTimeEnergy[k] + self.shortTimeEnergy[k+3]
-
-
-
-
+'''
