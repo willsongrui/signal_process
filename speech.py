@@ -466,18 +466,6 @@ class Speech:
 				self.f1.append(0)
 			else:
 				self.f1.append(f[0])
-			
-	def lpc(self):
-		print "lpc"
-		if len(self.speechSegment)==0 or self.isBlank==True:
-			return
-		self.numerator = []
-		for frame in self.frame:
-			acdata = acorr(frame)
-			filt = levinson_durbin(acdata,8)
-			self.numerator.append(filt.numerator)
-
-
 
 	def freqAnalyze(self):
 		print "freqAnalyze"
@@ -754,6 +742,19 @@ class Speech:
 				fs.write('%s %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f %d:%f\n'%(label,1,self.pitchMax[i],2,self.pitchAveragePerSeg[i],3,self.pitchRange[i],4,self.pitchMin[i],5,self.pitchDiff[i],6,self.volumeAverage[i],7,self.volumeStd[i],8,self.volumeMax[i],9,self.volumeDiff[i],10,self.below250[i]))
 		
 		fs.close()
+'''			
+	def lpc(self):
+		print "lpc"
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			return
+		self.numerator = []
+		for frame in self.frame:
+			acdata = acorr(frame)
+			filt = levinson_durbin(acdata,8)
+			self.numerator.append(filt.numerator)
+
+
+'''
 '''
 	def pre_getWordsPerSeg(self, a=2, T=3):
 		self.transitionTag = []
