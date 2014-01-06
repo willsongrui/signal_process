@@ -8,7 +8,7 @@ import utils
 import scipy.signal as signal
 from scipy.signal import argrelmax
 import scipy
-import yulewalker
+
 from audiolazy import *
 import pylab as pl
 from scikits.talkbox import lpc as talkboxLpc
