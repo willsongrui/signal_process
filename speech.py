@@ -9,7 +9,7 @@ import scipy.signal as signal
 from scipy.signal import argrelmax
 import scipy
 
-from audiolazy import *
+
 import pylab as pl
 from scikits.talkbox import lpc as talkboxLpc
 from mood_svm import classify
