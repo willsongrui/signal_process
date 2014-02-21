@@ -171,10 +171,16 @@ def advancedACF(frame1,frame2):
 
 # average magnitude difference function
 def AMDF(frame):
-	flen = len(frame)
-	amdf = np.zeros(flen)
-	for i in range(flen):
-		amdf[i] = np.sum(abs(frame[i:flen]-frame[0:flen-i]))
+    flen = len(frame)
+    amdf = np.zeros(flen)
+    for i in range(flen):
+        amdf[i] = np.sum(abs(frame[i:flen]-frame[0:flen-i]))/(flen-i+1)
+    return findPitch(amdf)
+
+def findPitch(amdf):
+    #print np.argmin(amdf[30:])+30
+    return np.argmin(amdf[30:])+30
+
 
 def complexGreater(a,b):
     return abs(a)**2>abs(b)**2

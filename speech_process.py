@@ -15,7 +15,7 @@ def speech_process(source, nchannels=1, sampleRate=8000, sampleWidth=2,littleEnd
 	record.getFramePitch()
 	record.getWordsPerSeg()
 	record.freqAnalyze()
-	record.LPC()
+	#record.LPC()
 	record.getEnergyBelow250()
 	record.getSpeechPercentage()
 	record.dataProcess()

@@ -8,11 +8,11 @@ import utils
 import scipy.signal as signal
 from scipy.signal import argrelmax
 import scipy
-
-
 import pylab as pl
 from scikits.talkbox import lpc as talkboxLpc
 from mood_svm import classify
+
+
 class Speech:
 	def __init__(self,source,nchannels,sampleRate,sampleWidth,littleEndian):
 		self.error = []
@@ -29,15 +29,16 @@ class Speech:
 			self.sampleRate = sampleRate
 			self.sampleWidth = sampleWidth
 			rawData = fw.read()
-			if sampleWidth==1:
+			if sampleWidth == 1:
 				dtype = np.int8
-			elif sampleWidth==2:
+			elif sampleWidth == 2:
 				dtype = np.int16
-			elif sampleWidth==4:
+			elif sampleWidth == 4:
 				dtype = np.int32
 			self.rawData = np.fromstring(rawData,dtype=dtype)
 			self.nframes = len(self.rawData)
 			fw.close()
+
 		elif source.find('.wav')!=-1:
 			try:
 				fw = wave.open(source,'r')
@@ -45,24 +46,29 @@ class Speech:
 				print "File %s  can't be found"%(source)
 				raise Exception('FileNotFound')
 			params = fw.getparams()
+
 			self.nchannels,self.sampleWidth,self.sampleRate,self.nframes = params[:4]
 			rawData = fw.readframes(self.nframes)
-			if self.sampleWidth==1:
+			if self.sampleWidth == 1:
 				dtype = np.int8
-			elif self.sampleWidth==2:
+			elif self.sampleWidth == 2:
 				dtype = np.int16
-			elif self.sampleWidth==4:
+			elif self.sampleWidth == 4:
 				dtype = np.int32
 			self.rawData = np.fromstring(rawData,dtype=dtype)
 			fw.close()
+
 		maxData = max(abs(self.rawData))
-		print maxData
-		if maxData<2000:
+		#print maxData
+		if maxData < 1200:
 			self.isBlank = True
+			print 'blank'
 		else:
 			self.isBlank = False
+		
 		self.maxData = maxData
 		#self.rawData = self.rawData*1.0/maxData
+		
 		self.rawData = self.rawData*1.0
 		self.totalLength = self.nframes*1.0/self.nchannels/self.sampleRate
 		self.speechSegment = []
@@ -78,114 +84,30 @@ class Speech:
 	def getSingleWords(self):
 		pass
 	def getEnergyBelow250(self):
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			return
+		
 		self.energyBelow250 = []
 		loc = int(250.0/4000*self.frameSize)
 		for fftFrame in self.fftFrameAbs:
 			totalEnergy = np.sum(fftFrame)
 			below250 = np.sum(fftFrame[:loc])
+			if totalEnergy == 0:
+				totalEnergy = 1
 			self.energyBelow250.append(below250/totalEnergy)
 
 	# get speechSegment,volume,volumeAbs,and shortTimeEnergy 
 	def getSpeechPercentage(self):
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			return
+		
 		self.speechPercentage = 0
 		speechFrame = 0
 		for i in self.speechSegment:
 			speechFrame = speechFrame + i[1] - i[0]
 		self.speechPercentage = speechFrame*1.0/self.frameNum 
 		self.speechLength = self.speechPercentage*self.totalLength
-	def getSpeechSegment(self,frameSize,overLap,minLen,minSilence):
-		print "getSpeechSegment"
-		zcrThread = 0
-		if self.isBlank == True:
-			return
-		if frameSize<=overLap:
-			raise Exception('Wrong getFrames parameters')
-		self.frameSize = frameSize
-		self.overLap = overLap
-		self.step = self.frameSize-self.overLap
-		self.frameNum = int(ceil(self.nframes/self.step))
-		self.absVolume = []
-		for i in range(self.frameNum):
-			self.frame.append(self.rawData[i*self.step:min(i*self.step+frameSize,self.nframes)])
-			#get zeroCrossingRate and energy
-			#self.zcr.append(sum(self.frame[i][0:-1]*self.frame[i][1:]<=0))
-			#zeroFrame = utils.isPositive(self.frame[i])
-			#zcrThread = max(self.frame[i])/2
-			zcrThread = 1000000
-			zcr = utils.zcr(self.frame[i],zcrThread)
-			self.zcr.append(zcr)
-			#self.zcr.append(0.5*sum(abs(zeroFrame[0:-1]-zeroFrame[1:])))
-			self.shortTimeEnergy.append(sum([k**2 for k in self.frame[i]]))
-			cal = sum(self.frame[i]*self.frame[i]*1.0/self.maxData/self.maxData)
-			if cal==0:
-				cal = 0.001
-			self.volume.append(10*np.log(cal))
-			self.absVolume.append(sum(abs(self.frame[i])))
-		# Two threadholds for shortTimeEnergy 
-		tHoldLow = min(max(self.shortTimeEnergy)/8,1)
-		tHoldHigh = min(max(self.shortTimeEnergy)/4,4)
-		print '*****'
-		print tHoldLow
-		print tHoldHigh
-		self.tHoldHigh = tHoldHigh
-		self.tHoldLow = tHoldLow
-		print self.tHoldHigh
-		self.segmentTime = []
-		# status is used to show the status of the endPointDetection machine
-		# 0=>silence		1=>mayBegin		2=>speechSegment 	3=>end 
-		status = 0
-		count = 0
-		segmentBeg = 0  
-		silence = 0		#Used to indicate the length of silence frames 
-		minSilence = int(minSilence*self.sampleRate/self.frameSize)  #If we meet minSilence consecutive silence than the speech is probably end
-		minLen = int(minLen*self.sampleRate/self.frameSize) 	#A speech should at least longer than minLen frames
-		segmentEnd = 0
-		print  "minSilence",minSilence,"minLen",minLen
-		for i in range(self.frameNum):
-			if (status == 0) or (status == 1):
-				if self.shortTimeEnergy[i]>tHoldHigh:
-					segmentBeg = i-count
-					status = 2
-					silence = 0
-					count = count + 1
-					print "beg"
-				elif self.shortTimeEnergy[i]>tHoldLow:
-					status = 1
-					count = count + 1
-				else:
-					status = 0
-					count = 0
-			elif status == 2:
-				if self.shortTimeEnergy[i] > tHoldLow:
-					count = count + 1
-					silence = 0
-				else:
-					silence = silence + 1
-					if silence < minSilence:	#silence is not long enough to end the speech
-						count = count + 1
-					elif count < minLen:		#speech is so short that it should be  noise
-						status = 0
-						silence = 0
-						count = 0
-						print "endOfNoise"
-					else:
-						status = 0
-						segmentEnd = i - minSilence
-						self.speechSegment.append((segmentBeg,segmentEnd))
-						self.segmentTime.append((segmentBeg*self.totalLength/self.frameNum,segmentEnd*self.totalLength/self.frameNum))
-						print "end success"
-						#print "beg speech %d %f"%(segmentBeg,segmentBeg*self.totalLength/self.frameNum)
-						#print "end speech %d %f"%(segmentEnd,segmentEnd*self.totalLength/self.frameNum)
-						status = 0
-						count = 0
-						silence = 0
-		if status == 2:
-			self.speechSegment.append((segmentBeg,self.frameNum))
-			self.segmentTime.append((segmentBeg*1.0/self.sampleRate,self.frameNum*1.0/self.sampleRate))
-			#self.segmentTime.append((self.frameNum-segmentBeg)*1.0/self.sampleRate)	
-		self.speechTime = sum([v[1]-v[0] for v in self.segmentTime])
-		self.totalSeg = len(self.speechSegment)
-	
+
 	def energyZeroCount(self):
 		self.ezr = []
 		self.ezm = []
@@ -199,7 +121,6 @@ class Speech:
 			self.ezm.append(ezm)
 
 	def getSpeechSegmentByAbsVolume(self,frameSize,overLap,minLen,minSilence):
-		print "getSpeechSegment"
 		zcrThread = 0
 		if self.isBlank == True:
 			return
@@ -212,10 +133,7 @@ class Speech:
 		self.absVolume = []
 		for i in range(self.frameNum):
 			self.frame.append(self.rawData[i*self.step:min(i*self.step+frameSize,self.nframes)])
-			zcrThread = max(self.frame[i])/8
-			#get zeroCrossingRate and energy
-			#self.zcr.append(sum(self.frame[i][0:-1]*self.frame[i][1:]<=0))
-			#zeroFrame = utils.isPositive(self.frame[i])
+			#zcrThread = max(self.frame[i])/8
 			zcr = utils.zcr(self.frame[i],zcrThread)
 			self.zcr.append(zcr)
 			self.shortTimeEnergy.append(sum([k**2 for k in self.frame[i]]))
@@ -285,7 +203,7 @@ class Speech:
 			#self.segmentTime.append((self.frameNum-segmentBeg)*1.0/self.sampleRate)	
 		self.speechTime = sum([v[1]-v[0] for v in self.segmentTime])
 		self.totalSeg = len(self.speechSegment)
-
+	
 	#50Hz ~ 450Hz
 	#为了消除共振峰的影响，使用带通滤波器(60~900)或中心削波
 	def getFramePitch(self):
@@ -294,14 +212,13 @@ class Speech:
 		#For example, self.pitchSeg[m][n] is the (n+1)th "ZHUOYIN" pitch seg in m+1 speechSeg 
 		self.pitchSeg = []
 		#self.tmp = []
-		minLen = 5 # 最小浊音长度
-		minSilence = 5 #浊音之间最小间隔
 		if len(self.speechSegment)==0 or self.isBlank==True:
 			return
 		
 		pitchThread = int(self.sampleRate/450)
 		self.pitch = []
 		self.tmp=[]
+		b, a = signal.iirdesign([60.0*2/self.sampleRate,950.0*2/self.sampleRate],[50.0*2/self.sampleRate,1000.0*2/self.sampleRate],2,40)
 		for segTime in self.speechSegment:
 			tmp = []
 			pitchSum = 0
@@ -309,13 +226,11 @@ class Speech:
 			end = segTime[1]
 			curFramePitch = []
 			for frame in self.frame[beg:end]:
+				#frameFilt = signal.lfilter(b,a,frame)
 				pitch = utils.ACF(frame)
-				#pl.plot(pitch)
-				#pl.show()
 				pitch[:pitchThread] = -abs(pitch[0])
-				
 				pitchMax = np.argmax(pitch)
-				if pitchMax==0:
+				if pitchMax == 0:
 					self.error.append(('pitch error',pitch,utils.ACF(frame)))
 				tmp.append((self.sampleRate/pitchMax,pitch[pitchMax]/1000000))
 				curFramePitch.append(self.sampleRate/pitchMax)
@@ -338,10 +253,10 @@ class Speech:
 			count = 0
 			silence = 0
 			self.pitch.append(curFramePitch)
-			print 'ezrLevel',ezrLevel,'volumeHigh',volumeHigh,'pitchHigh',pitchHigh,'minSilence',minSilence,'minLen',minLen
+			#print 'ezrLevel',ezrLevel,'volumeHigh',volumeHigh,'pitchHigh',pitchHigh
 			for t in range(len(tmp)):
 				if tmp[t][1]>pitchHigh and self.ezr[t+beg]>ezrLevel:
-					print 'beg ',t,'status',status
+					#print 'beg ',t,'status',status
 					if status == 0:
 						start = t 
 						duration = 0
@@ -357,72 +272,31 @@ class Speech:
 			self.pitchSeg.append(trange)
 			self.tmp.append(tmp)
 
-
-
-
-			'''
-			status = 0
-			for t in range(len(tmp)):
-				if status==0 or status==1:
-					if tmp[t][1]>pitchHigh and self.ezr[t+beg]>ezrLevel and self.absVolume[t+beg]>volumeHigh and self.zcr[t+beg]<zcrLow:
-						pitchBeg = t-count 
-						status = 2
-						count = count+1
-						print 'beg',t-count
-					elif tmp[t][1]>pitchLow and self.ezr[t+beg]>ezrLevel and self.absVolume[t+beg]>volumeLow and self.zcr[t+beg]<zcrHigh:
-						status = 1
-						count = count+1
-					else:
-						status = 0
-						count = 0
-				elif status == 2:
-					if tmp[t][1]>pitchLow and self.ezr[t+beg]>ezrLevel and self.absVolume[t+beg]>volumeLow and self.zcr[t+beg]<zcrHigh:
-						count = count+1
-						silence = 0
-					else:
-						silence = silence+1
-						if silence<minSilence:
-							count = count+1
-						elif count < minLen:
-							status = 0
-							silence = 0
-							count = 0
-							print 'too short',pitchBeg,t			
-						else:
-							status = 0
-							pitchEnd = t - minSilence
-							trange.append((pitchBeg,pitchEnd))
-							status = 0
-							count = 0
-							silence = 0
-			if status == 2:
-				if len(tmp)-pitchBeg > minLen:
-					trange.append((pitchBeg,len(tmp)-1))
-
-			self.pitchSeg.append(trange)
-
-			#pitchSeg = []
-			#for t in trange:
-			#	pitchSeg.append(tmp[t[0]:t[1]])
-			#self.pitchSeg.append(pitchSeg)
-			
-			
-			#self.tmp.append(tmp)
-			'''
 	
 	def getFramePitchAdvanced(self):
-		pitchLow = 10
-		self.pitchAdvanced = []
-		for segTime in self.speechSegment:
-			pitchAdvanced = []
-			beg = segTime[0]
-			end = segTime[1]
-			for i in range(beg,end):
-				pitch = utils.advancedACF(self.frame[i],self.frame[i+1])
-				pitch[:pitchLow] = -pitch[0]
-				pitchMax = np.argmax(pitch)
-				pitchAdvanced.append(self.sampleRate/pitchMax)
-		self.pitchAdvanced.append(pitchAdvanced)
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			return
+		
+		self.p = []
+		b, a = signal.iirdesign([60.0*2/self.sampleRate,950.0*2/self.sampleRate],[50.0*2/self.sampleRate,1000.0*2/self.sampleRate],2,40)
+		for frame in self.frame:
+			filt = signal.lfilter(b,a,frame)
+			minAMDF = utils.AMDF(filt)
+			pitch = self.sampleRate/minAMDF
+			self.p.append(pitch)
+
+	
+	def tt(self,a,b):
+		if len(self.speechSegment)==0 or self.isBlank==True:
+			return
+		
+		self.getFramePitchAdvanced()
+		#self.p = np.clip(self.p,0,450)
+		pl.subplot(211)
+		pl.plot(self.p[a:b])
+		pl.subplot(212)
+		pl.plot(self.absVolume[a:b])
+		pl.show()
 
 	def LPC(self):
 		print "LPC"
@@ -462,7 +336,7 @@ class Speech:
 			self.bw.append(bandwidth)
 		self.f1 = []
 		for f in self.fmt:
-			if len(f)==0:
+			if len(f) == 0:
 				self.f1.append(0)
 			else:
 				self.f1.append(f[0])
@@ -481,8 +355,6 @@ class Speech:
 			m = int((i+0.53)*1960/(26.81-0.53-i))
 			n = m/fs
 			F.append(n)
-		
-		
 		self.formantValue = []
 		self.frameSize/2+1
 		self.fftFrame = []
@@ -499,6 +371,7 @@ class Speech:
 			fftFrameAbs = [abs(fft) for fft in fftFrame]
 			self.fftFrameAbs.append(fftFrameAbs)
 			#短时谱临界带特征矢量
+			'''
 			g = np.zeros(17)
 			beg = 1
 		
@@ -520,6 +393,8 @@ class Speech:
 			self.formantValue.append(points[-1][0])
 			formant.sort() 
 			self.formant.append(formant)
+			'''
+
 	#3,2
 	def getWordsPerSeg(self,minLen=10,minSilence=5,preLen=2):
 		print "getWordsPerSeg"
@@ -664,12 +539,12 @@ class Speech:
 			self.below250.append(below250)
 			volume = np.average(self.absVolume[beg:end])
 			volumeStd = np.std(self.absVolume[beg:end])
-			fmtAverage = np.average(self.f1[beg:end])
+			#fmtAverage = np.average(self.f1[beg:end])
 			self.volumeAverage.append(volume)
 			self.volumeStd.append(volumeStd)
 			self.volumeMax.append(np.max(self.absVolume[beg:end]))
 			self.volumeMin.append(np.min(self.absVolume[beg:end]))
-			self.fmtAverage.append(fmtAverage)
+			#self.fmtAverage.append(fmtAverage)
 			volumeDiff = 0
 			for k in range(beg,end-1):
 				volumeDiff = volumeDiff + abs(self.absVolume[k+1]-self.absVolume[k])

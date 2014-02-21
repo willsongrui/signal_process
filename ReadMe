@@ -1,0 +1,53 @@
+class Speech:
+成员变量：
+  nchannels:	
+	声道数
+  sampleWidth:
+	采样数据带宽 
+  sampleRate:
+	采样率
+  nframes:
+	总采样数据数目
+  rawData:
+	实际的采样数据
+  totalLength:
+	时间长度
+  speechSegment:
+        通话有声段
+  frame:
+	将rawData分帧后保存的list
+  frameSize:
+         帧的长度
+  overLap:
+         帧重复段的长度
+  step:
+	 每一帧的步长（frameSize - overLap）
+  frameNum:
+	 总帧数
+  zcr:
+         短时的过零率。计算方法中涉及一个zcrThread.
+  volume:
+         每一帧的音量。计算方法是10*log((每一帧的音量/最大音量)^2)
+  speed:
+  isBlank:
+         是否为空白录音
+  
+  absVolume:
+	音量的绝对值。计算方法是每一帧数据的绝对值和
+  shortTimeEnergy:
+        短时能量。 和音量的区别：音量除以最大音量，而短时能量不。
+  ezr:
+	energy-zero-rate
+  ezm:
+	energy-zero-multiplication
+  pitchSeg:
+        基频段。对于每一个speechSeg对应一个pitchSeg,每个pitchSeg保存着每一个元音的开始和结尾位置
+
+成员函数：
+  getSpeechSegmentByAbsVolume:
+	通过音量的绝对值找到通话有声段,计算方法是根据absVolume参数，通过双门限法(minLen,minSilence)
+        得到有声段的区域，保存在speechFrame成员变量中
+  energyZeroCount:
+        能量-过零率比。 
+  getFramePitch:
+	
