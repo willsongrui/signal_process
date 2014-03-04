@@ -629,8 +629,8 @@ class Speech:
 			self.numerator.append(filt.numerator)
 
 
-'''
-'''
+
+
 	def pre_getWordsPerSeg(self, a=2, T=3):
 		self.transitionTag = []
 		for seg in self.speechSegment:
